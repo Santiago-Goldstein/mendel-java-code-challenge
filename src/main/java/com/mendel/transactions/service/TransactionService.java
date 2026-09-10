@@ -117,4 +117,14 @@ public class TransactionService {
 
         return sum;
     }
+
+    public int saveTransactions(
+            List<Transaction> transactions
+    ) {
+        for (Transaction transaction : transactions) {
+            repository.save(transaction);
+        }
+
+        return transactions.size();
+    }
 }

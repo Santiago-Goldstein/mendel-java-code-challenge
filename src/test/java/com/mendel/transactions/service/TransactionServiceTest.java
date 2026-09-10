@@ -165,4 +165,35 @@ class TransactionServiceTest {
 
         assertThat(sum).isEqualTo(20000.0);
     }
+
+    @Test
+    void shouldSaveMultipleTransactions() {
+        Transaction transaction10 =
+                new Transaction(
+                        10L,
+                        5000.0,
+                        "cars",
+                        null
+                );
+
+        Transaction transaction11 =
+                new Transaction(
+                        11L,
+                        10000.0,
+                        "shopping",
+                        10L
+                );
+
+        int saved = service.saveTransactions(
+                List.of(
+                        transaction10,
+                        transaction11
+                )
+        );
+
+        assertThat(saved).isEqualTo(2);
+
+        verify(repository).save(transaction10);
+        verify(repository).save(transaction11);
+    }
 }
