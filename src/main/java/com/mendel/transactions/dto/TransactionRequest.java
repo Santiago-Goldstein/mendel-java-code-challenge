@@ -6,10 +6,10 @@ import jakarta.validation.constraints.NotNull;
 
 public record TransactionRequest(
 
-        @NotNull
+        @NotNull(message = "amount is required")
         Double amount,
 
-        @NotBlank
+        @NotBlank(message = "type is required")
         String type,
 
         @JsonProperty("parent_id")
