@@ -196,4 +196,34 @@ class TransactionServiceTest {
         verify(repository).save(transaction10);
         verify(repository).save(transaction11);
     }
+
+    @Test
+    void shouldCalculateSumAcrossMultipleBranches() {
+        Transaction root =
+                new Transaction(10L, 1000.0, "root", null);
+
+        Transaction child1 =
+                new Transaction(11L, 2000.0, "child", 10L);
+
+        Transaction child2 =
+                new Transaction(12L, 3000.0, "child", 10L);
+
+        Transaction grandchild =
+                new Transaction(13L, 4000.0, "child", 11L);
+
+        when(repository.findById(10L))
+                .thenReturn(Optional.of(root));
+
+        when(repository.findAll())
+                .thenReturn(List.of(
+                        root,
+                        child1,
+                        child2,
+                        grandchild
+                ));
+
+        double sum = service.calculateSum(10L);
+
+        assertThat(sum).isEqualTo(10000.0);
+    }
 }
