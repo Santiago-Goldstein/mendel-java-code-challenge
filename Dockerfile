@@ -8,7 +8,7 @@ RUN mvn dependency:go-offline -B
 
 COPY src ./src
 
-RUN mvn clean package -B
+RUN mvn clean package -DskipTests -B
 
 
 FROM eclipse-temurin:17.0.20_8-jre-alpine-3.24
@@ -18,10 +18,16 @@ WORKDIR /app
 RUN addgroup -S spring \
     && adduser -S spring -G spring
 
-COPY --from=build /app/target/transactions-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=build \
+    /app/target/transactions-0.0.1-SNAPSHOT.jar \
+    app.jar
 
 USER spring:spring
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT [
+    "java",
+    "-jar",
+    "app.jar"
+]

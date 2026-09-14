@@ -1,12 +1,15 @@
 package com.mendel.transactions.integration;
 
+import com.mendel.transactions.support.MySqlTestContainerConfiguration;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
@@ -19,14 +22,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@DirtiesContext(
-        classMode =
-                DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD
+@Import(
+        MySqlTestContainerConfiguration.class
 )
 class CycleValidationIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void cleanDatabase() {
+
+        jdbcTemplate.update(
+                "DELETE FROM transactions"
+        );
+    }
 
     @Test
     void shouldRejectDirectSelfCycle()
@@ -63,42 +76,38 @@ class CycleValidationIntegrationTest {
             throws Exception {
 
         mockMvc.perform(
-                put("/transactions/2101")
-                        .contentType(
-                                MediaType.APPLICATION_JSON
-                        )
-                        .content("""
+                        put("/transactions/2101")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
                                 {
                                     "amount": 1000,
                                     "type": "cycle"
                                 }
                                 """)
-        ).andExpect(
-                status().isOk()
-        );
+                )
+                .andExpect(
+                        status().isOk()
+                );
 
         mockMvc.perform(
-                put("/transactions/2102")
-                        .contentType(
-                                MediaType.APPLICATION_JSON
-                        )
-                        .content("""
+                        put("/transactions/2102")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
                                 {
                                     "amount": 2000,
                                     "type": "cycle",
                                     "parent_id": 2101
                                 }
                                 """)
-        ).andExpect(
-                status().isOk()
-        );
+                )
+                .andExpect(
+                        status().isOk()
+                );
 
-        /*
-         * Updating 2101 so that its parent becomes 2102
-         * would create:
-         *
-         * 2101 -> 2102 -> 2101
-         */
         mockMvc.perform(
                         put("/transactions/2101")
                                 .contentType(
@@ -116,18 +125,10 @@ class CycleValidationIntegrationTest {
                         status().isConflict()
                 );
 
-        /*
-         * The rejected update must not have modified
-         * the previous valid state.
-         *
-         * 2101 = 1000
-         *   |
-         *   +-- 2102 = 2000
-         *
-         * Sum = 3000
-         */
         mockMvc.perform(
-                        get("/transactions/sum/2101")
+                        get(
+                                "/transactions/sum/2101"
+                        )
                 )
                 .andExpect(
                         status().isOk()
@@ -172,12 +173,10 @@ class CycleValidationIntegrationTest {
                                 .value(409)
                 );
 
-        /*
-         * Validation occurs before saving any row.
-         * Therefore 2201 must not exist.
-         */
         mockMvc.perform(
-                        get("/transactions/sum/2201")
+                        get(
+                                "/transactions/sum/2201"
+                        )
                 )
                 .andExpect(
                         status().isNotFound()
