@@ -15,7 +15,8 @@ FROM eclipse-temurin:17.0.20_8-jre-alpine-3.24
 
 WORKDIR /app
 
-RUN addgroup -S spring \
+RUN apk add --no-cache curl \
+    && addgroup -S spring \
     && adduser -S spring -G spring
 
 COPY --from=build \
@@ -26,8 +27,4 @@ USER spring:spring
 
 EXPOSE 8080
 
-ENTRYPOINT [
-    "java",
-    "-jar",
-    "app.jar"
-]
+ENTRYPOINT ["java", "-jar", "app.jar"]
