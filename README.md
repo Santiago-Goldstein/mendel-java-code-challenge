@@ -8,6 +8,7 @@ The application stores its data in memory and provides operations for:
 * Retrieving transaction IDs by type.
 * Calculating the total amount of a transaction and all of its transitively linked descendants.
 * Importing multiple transactions from a CSV file.
+* Preventing cyclic parent relationships before any data is persisted.
 
 ## Tech Stack
 
@@ -71,6 +72,8 @@ parentId
 
 `parentId` is optional and represents a relationship with another transaction.
 
+Parent relationships must remain acyclic. Direct self-references such as `10 → 10` and indirect cycles such as `10 → 11 → 10` are rejected before persistence. A transaction may still reference a parent that has not been created yet; if that parent is later created, the resulting graph is validated again.
+
 Transactions are immutable once created. Replacing an existing transaction creates a new domain object and replaces the previous value associated with the same ID.
 
 ## API
@@ -109,6 +112,22 @@ Response:
 ```
 
 Sending another `PUT` request using the same transaction ID replaces the existing transaction.
+
+If creating or replacing a transaction would introduce a cycle, the request is rejected and the previously stored state remains unchanged.
+
+```http
+HTTP 409 Conflict
+```
+
+Example:
+
+```json
+{
+  "status": 409,
+  "error": "Conflict",
+  "message": "Transaction relationship would create a cycle involving id: 10"
+}
+```
 
 ---
 
@@ -239,6 +258,8 @@ Successful response:
 
 The entire CSV file is parsed and validated before transactions are written to the repository. This prevents validation errors halfway through a file from producing a partially imported valid prefix.
 
+The complete candidate batch is combined with the current repository state and checked for cycles before the first row is saved. If any relationship would create a cycle, the whole import is rejected with `HTTP 409 Conflict` and no transaction from that file is persisted.
+
 Duplicate transaction IDs inside the same CSV file are rejected.
 
 A transaction ID that already exists in the repository may be replaced through CSV import, following the same replacement semantics as the `PUT` endpoint.
@@ -265,6 +286,7 @@ Handled cases include:
 * Empty CSV files.
 * Invalid CSV structure.
 * Invalid numeric CSV values.
+* Cyclic transaction relationships (`409 Conflict`).
 * Missing transactions.
 
 Unexpected application errors are not converted into client errors and remain HTTP `500` responses.
@@ -318,7 +340,8 @@ The test suite includes:
 * Service unit tests.
 * CSV parser tests.
 * Error handling tests.
-* Full API integration tests using Spring Boot and MockMvc.
+* Cycle-validation unit tests.
+* Full API integration tests using Spring Boot and MockMvc, including cyclic `PUT` and CSV scenarios.
 
 Integration tests exercise the real Spring components without mocking the service or repository layers.
 
@@ -407,6 +430,25 @@ This keeps business logic independent from the storage implementation and follow
 
 A different persistence mechanism could therefore be introduced without changing the service contract.
 
+### Cycle prevention
+
+Before saving a transaction or CSV batch, the service builds a temporary representation of the proposed final graph:
+
+```text
+transactionId → parentId
+```
+
+The current repository state is loaded first and candidate transactions are then applied in memory using the same replacement semantics as the API. Each parent chain is traversed iteratively while tracking both the current path and nodes that have already been fully validated.
+
+Encountering the same ID twice in the current path identifies a cycle and raises a domain exception before any write occurs. This covers direct self-cycles, indirect cycles, replacements that close an existing chain, and cycles contained entirely within a CSV batch.
+
+For `n` transactions, validation requires approximately:
+
+```text
+Time:  O(n)
+Space: O(n)
+```
+
 ### Transaction sum algorithm
 
 For each sum request, the application reads the current transactions and builds temporary lookup structures:
@@ -491,6 +533,7 @@ src/
 │       │   ├── SumResponse.java
 │       │   └── TransactionRequest.java
 │       ├── exception/
+│       │   ├── CyclicTransactionException.java
 │       │   ├── GlobalExceptionHandler.java
 │       │   ├── InvalidCsvException.java
 │       │   └── TransactionNotFoundException.java
@@ -523,6 +566,7 @@ repository
 service
 REST API
 CSV import
+cycle prevention
 error handling
 integration tests
 Docker
@@ -541,3 +585,5 @@ Tests were written alongside the implementation, with particular focus on busine
 * Transaction IDs in type lookup responses are returned sorted.
 * CSV files require the headers `id`, `amount`, `type`, and `parent_id`.
 * A CSV cannot contain the same transaction ID more than once.
+* Persisted parent relationships must remain acyclic.
+* A cycle detected through `PUT` or CSV import returns `409 Conflict` without persisting the invalid change.
