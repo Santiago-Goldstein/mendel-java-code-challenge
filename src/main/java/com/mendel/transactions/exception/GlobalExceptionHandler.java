@@ -26,6 +26,16 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(CyclicTransactionException.class)
+    public ResponseEntity<ApiErrorResponse> handleCyclicTransaction(
+            CyclicTransactionException exception
+    ) {
+        return buildError(
+                HttpStatus.CONFLICT,
+                exception.getMessage()
+        );
+    }
+
     @ExceptionHandler(InvalidCsvException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidCsv(
             InvalidCsvException exception
@@ -47,15 +57,22 @@ public class GlobalExceptionHandler {
                 .stream()
                 .sorted(
                         Comparator.comparing(
-                                fieldError -> fieldError.getField()
+                                fieldError ->
+                                        fieldError.getField()
                         )
                 )
-                .map(fieldError -> fieldError.getDefaultMessage())
+                .map(
+                        fieldError ->
+                                fieldError.getDefaultMessage()
+                )
                 .distinct()
-                .collect(Collectors.joining("; "));
+                .collect(
+                        Collectors.joining("; ")
+                );
 
         if (message.isBlank()) {
-            message = "Request validation failed";
+            message =
+                    "Request validation failed";
         }
 
         return buildError(

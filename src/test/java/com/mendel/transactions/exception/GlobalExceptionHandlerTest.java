@@ -14,7 +14,8 @@ class GlobalExceptionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new GlobalExceptionHandler();
+        handler =
+                new GlobalExceptionHandler();
     }
 
     @Test
@@ -22,20 +23,54 @@ class GlobalExceptionHandlerTest {
 
         ResponseEntity<ApiErrorResponse> response =
                 handler.handleTransactionNotFound(
-                        new TransactionNotFoundException(999L)
-                );
-
-        assertThat(response.getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
-
-        assertThat(response.getBody())
-                .isEqualTo(
-                        new ApiErrorResponse(
-                                404,
-                                "Not Found",
-                                "Transaction not found with id: 999"
+                        new TransactionNotFoundException(
+                                999L
                         )
                 );
+
+        assertThat(
+                response.getStatusCode()
+        ).isEqualTo(
+                HttpStatus.NOT_FOUND
+        );
+
+        assertThat(
+                response.getBody()
+        ).isEqualTo(
+                new ApiErrorResponse(
+                        404,
+                        "Not Found",
+                        "Transaction not found with id: 999"
+                )
+        );
+    }
+
+    @Test
+    void shouldReturnConflictWhenTransactionCreatesCycle() {
+
+        ResponseEntity<ApiErrorResponse> response =
+                handler.handleCyclicTransaction(
+                        new CyclicTransactionException(
+                                10L
+                        )
+                );
+
+        assertThat(
+                response.getStatusCode()
+        ).isEqualTo(
+                HttpStatus.CONFLICT
+        );
+
+        assertThat(
+                response.getBody()
+        ).isEqualTo(
+                new ApiErrorResponse(
+                        409,
+                        "Conflict",
+                        "Transaction relationship would create "
+                                + "a cycle involving id: 10"
+                )
+        );
     }
 
     @Test
@@ -48,16 +83,20 @@ class GlobalExceptionHandlerTest {
                         )
                 );
 
-        assertThat(response.getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(
+                response.getStatusCode()
+        ).isEqualTo(
+                HttpStatus.BAD_REQUEST
+        );
 
-        assertThat(response.getBody())
-                .isEqualTo(
-                        new ApiErrorResponse(
-                                400,
-                                "Bad Request",
-                                "Invalid CSV file"
-                        )
-                );
+        assertThat(
+                response.getBody()
+        ).isEqualTo(
+                new ApiErrorResponse(
+                        400,
+                        "Bad Request",
+                        "Invalid CSV file"
+                )
+        );
     }
 }
