@@ -1,19 +1,18 @@
+name: mendel-transactions
+
 services:
 
   mysql:
-
     image: mysql:8.4.11
 
-    container_name: mendel-transactions-mysql
-
     environment:
-      MYSQL_DATABASE: transactions
-      MYSQL_USER: transactions
-      MYSQL_PASSWORD: transactions
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-transactions}
+      MYSQL_USER: ${MYSQL_USER:-transactions}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-transactions}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
 
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
 
     volumes:
       - mysql-data:/var/lib/mysql
@@ -22,12 +21,44 @@ services:
       test:
         [
           "CMD-SHELL",
-          "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"
+          "mysqladmin ping -h 127.0.0.1 -u\"$${MYSQL_USER}\" -p\"$${MYSQL_PASSWORD}\" --silent"
         ]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 15s
+
+    restart: unless-stopped
+
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    environment:
+      DB_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-transactions}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+      DB_USERNAME: ${MYSQL_USER:-transactions}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-transactions}
+
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+        restart: true
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent --show-error http://localhost:8080/actuator/health > /dev/null"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
     restart: unless-stopped
 
