@@ -1,13 +1,45 @@
 package com.mendel.transactions.domain;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "transactions")
 public class Transaction {
 
-    private final long id;
-    private final double amount;
-    private final String type;
-    private final Long parentId;
+    @Id
+    private long id;
 
-    public Transaction(long id, double amount, String type, Long parentId) {
+    @Column(
+            nullable = false
+    )
+    private double amount;
+
+    @Column(
+            name = "transaction_type",
+            nullable = false
+    )
+    private String type;
+
+    @Column(
+            name = "parent_id"
+    )
+    private Long parentId;
+
+    protected Transaction() {
+        /*
+         * Required by JPA.
+         */
+    }
+
+    public Transaction(
+            long id,
+            double amount,
+            String type,
+            Long parentId
+    ) {
         this.id = id;
         this.amount = amount;
         this.type = type;

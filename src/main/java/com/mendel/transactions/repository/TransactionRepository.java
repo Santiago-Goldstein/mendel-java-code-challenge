@@ -9,6 +9,8 @@ public interface TransactionRepository {
 
     void save(Transaction transaction);
 
+    void saveAll(List<Transaction> transactions);
+
     Optional<Transaction> findById(long id);
 
     List<Transaction> findByType(String type);

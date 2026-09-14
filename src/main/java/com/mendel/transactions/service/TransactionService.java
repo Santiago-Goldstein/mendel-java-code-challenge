@@ -20,7 +20,9 @@ public class TransactionService {
 
     private final TransactionRepository repository;
 
-    public TransactionService(TransactionRepository repository) {
+    public TransactionService(
+            TransactionRepository repository
+    ) {
         this.repository = repository;
     }
 
@@ -30,6 +32,7 @@ public class TransactionService {
             String type,
             Long parentId
     ) {
+
         Transaction transaction =
                 new Transaction(
                         id,
@@ -45,21 +48,29 @@ public class TransactionService {
         repository.save(transaction);
     }
 
-    public List<Long> findTransactionIdsByType(String type) {
-        return repository.findByType(type)
+    public List<Long> findTransactionIdsByType(
+            String type
+    ) {
+
+        return repository
+                .findByType(type)
                 .stream()
                 .map(Transaction::getId)
                 .sorted()
                 .toList();
     }
 
-    public double calculateSum(long transactionId) {
+    public double calculateSum(
+            long transactionId
+    ) {
 
-        repository.findById(transactionId)
+        repository
+                .findById(transactionId)
                 .orElseThrow(
-                        () -> new TransactionNotFoundException(
-                                transactionId
-                        )
+                        () ->
+                                new TransactionNotFoundException(
+                                        transactionId
+                                )
                 );
 
         List<Transaction> transactions =
@@ -79,12 +90,16 @@ public class TransactionService {
             );
 
             if (transaction.getParentId() != null) {
+
                 childrenByParent
                         .computeIfAbsent(
                                 transaction.getParentId(),
-                                ignored -> new ArrayList<>()
+                                ignored ->
+                                        new ArrayList<>()
                         )
-                        .add(transaction.getId());
+                        .add(
+                                transaction.getId()
+                        );
             }
         }
 
@@ -133,11 +148,10 @@ public class TransactionService {
     public int saveTransactions(
             List<Transaction> transactions
     ) {
+
         validateNoCycles(transactions);
 
-        for (Transaction transaction : transactions) {
-            repository.save(transaction);
-        }
+        repository.saveAll(transactions);
 
         return transactions.size();
     }
@@ -150,9 +164,13 @@ public class TransactionService {
                 new HashMap<>();
 
         /*
-         * Build the current persisted state.
+         * Start with the currently persisted graph.
          */
-        for (Transaction transaction : repository.findAll()) {
+        for (
+                Transaction transaction :
+                repository.findAll()
+        ) {
+
             parentByTransactionId.put(
                     transaction.getId(),
                     transaction.getParentId()
@@ -160,12 +178,16 @@ public class TransactionService {
         }
 
         /*
-         * Apply the proposed changes in memory first.
+         * Apply the proposed changes in memory.
          *
-         * If an ID already exists, this replaces its parent relationship,
-         * matching the PUT semantics used by the API.
+         * Existing IDs are replaced here exactly as they
+         * would be replaced by the PUT operation.
          */
-        for (Transaction transaction : candidateTransactions) {
+        for (
+                Transaction transaction :
+                candidateTransactions
+        ) {
+
             parentByTransactionId.put(
                     transaction.getId(),
                     transaction.getParentId()
@@ -184,10 +206,15 @@ public class TransactionService {
         Set<Long> completelyValidated =
                 new HashSet<>();
 
-        for (Long startingId :
-                parentByTransactionId.keySet()) {
+        for (
+                Long startingId :
+                parentByTransactionId.keySet()
+        ) {
 
-            if (completelyValidated.contains(startingId)) {
+            if (
+                    completelyValidated
+                            .contains(startingId)
+            ) {
                 continue;
             }
 
@@ -203,18 +230,23 @@ public class TransactionService {
                             .containsKey(currentId)
             ) {
 
-                if (completelyValidated.contains(currentId)) {
+                if (
+                        completelyValidated
+                                .contains(currentId)
+                ) {
                     break;
                 }
 
                 if (!currentPath.add(currentId)) {
+
                     throw new CyclicTransactionException(
                             currentId
                     );
                 }
 
                 currentId =
-                        parentByTransactionId.get(currentId);
+                        parentByTransactionId
+                                .get(currentId);
             }
 
             completelyValidated.addAll(
