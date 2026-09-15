@@ -93,7 +93,7 @@ class JpaTransactionRepositoryAdapterTest {
                         10L,
                         7500.0,
                         "shopping",
-                        null
+                        99L
                 )
         );
 
@@ -113,9 +113,130 @@ class JpaTransactionRepositoryAdapterTest {
                 .isEqualTo("shopping");
 
         assertThat(
+                stored.getParentId()
+        )
+                .isEqualTo(99L);
+
+        assertThat(
                 repository.findAll()
         )
                 .hasSize(1);
+    }
+
+    @Test
+    void shouldUpdateTypeQueriesAfterReplacement() {
+
+        repository.save(
+                new Transaction(
+                        20L,
+                        5000.0,
+                        "cars",
+                        null
+                )
+        );
+
+        assertThat(
+                repository.findByType(
+                        "cars"
+                )
+        )
+                .extracting(
+                        Transaction::getId
+                )
+                .containsExactly(20L);
+
+        repository.save(
+                new Transaction(
+                        20L,
+                        7500.0,
+                        "shopping",
+                        null
+                )
+        );
+
+        assertThat(
+                repository.findByType(
+                        "cars"
+                )
+        ).isEmpty();
+
+        assertThat(
+                repository.findByType(
+                        "shopping"
+                )
+        )
+                .extracting(
+                        Transaction::getId
+                )
+                .containsExactly(20L);
+    }
+
+    @Test
+    void shouldAllowParentReferenceBeforeParentExists() {
+
+        repository.save(
+                new Transaction(
+                        31L,
+                        2000.0,
+                        "child",
+                        30L
+                )
+        );
+
+        Transaction child =
+                repository
+                        .findById(31L)
+                        .orElseThrow();
+
+        assertThat(
+                child.getParentId()
+        ).isEqualTo(30L);
+
+        assertThat(
+                repository.findById(30L)
+        ).isEmpty();
+
+        repository.save(
+                new Transaction(
+                        30L,
+                        1000.0,
+                        "parent",
+                        null
+                )
+        );
+
+        assertThat(
+                repository.findById(30L)
+        ).isPresent();
+
+        assertThat(
+                repository
+                        .findById(31L)
+                        .orElseThrow()
+                        .getParentId()
+        ).isEqualTo(30L);
+    }
+
+    @Test
+    void shouldPersistDecimalAmounts() {
+
+        repository.save(
+                new Transaction(
+                        40L,
+                        1234.56,
+                        "decimal",
+                        null
+                )
+        );
+
+        Transaction stored =
+                repository
+                        .findById(40L)
+                        .orElseThrow();
+
+        assertThat(
+                stored.getAmount()
+        ).isEqualTo(1234.56);
     }
 
     @Test
@@ -188,5 +309,23 @@ class JpaTransactionRepositoryAdapterTest {
                         10L,
                         11L
                 );
+    }
+
+    @Test
+    void shouldReturnEmptyRepositoryWhenNoTransactionsExist() {
+
+        assertThat(
+                repository.findAll()
+        ).isEmpty();
+
+        assertThat(
+                repository.findById(999L)
+        ).isEmpty();
+
+        assertThat(
+                repository.findByType(
+                        "unknown"
+                )
+        ).isEmpty();
     }
 }

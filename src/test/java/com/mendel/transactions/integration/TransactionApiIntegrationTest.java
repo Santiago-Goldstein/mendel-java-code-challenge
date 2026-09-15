@@ -213,6 +213,229 @@ class TransactionApiIntegrationTest {
     }
 
     @Test
+    void shouldReplaceExistingTransactionAndReflectChangesAcrossQueries()
+            throws Exception {
+
+        /*
+         * First root.
+         */
+        mockMvc.perform(
+                        put("/transactions/1501")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 1000,
+                                        "type": "root-a"
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                );
+
+        /*
+         * Second root.
+         */
+        mockMvc.perform(
+                        put("/transactions/1503")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 3000,
+                                        "type": "root-b"
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                );
+
+        /*
+         * Transaction initially belongs to root A.
+         */
+        mockMvc.perform(
+                        put("/transactions/1502")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 2000,
+                                        "type": "replacement-old",
+                                        "parent_id": 1501
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                );
+
+        /*
+         * Confirm initial graph:
+         *
+         * 1501
+         *   |
+         * 1502
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/1501"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(3000.0)
+                );
+
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/1503"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(3000.0)
+                );
+
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/replacement-old"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$[0]")
+                                .value(1502)
+                );
+
+        /*
+         * Replace the same transaction.
+         *
+         * amount changes
+         * type changes
+         * parent changes from 1501 to 1503
+         */
+        mockMvc.perform(
+                        put("/transactions/1502")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 5000,
+                                        "type": "replacement-new",
+                                        "parent_id": 1503
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("ok")
+                );
+
+        /*
+         * The previous type must no longer contain
+         * transaction 1502.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/replacement-old"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$")
+                                .isEmpty()
+                );
+
+        /*
+         * The new type must contain transaction 1502.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/replacement-new"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$[0]")
+                                .value(1502)
+                );
+
+        /*
+         * 1502 was detached from 1501.
+         *
+         * Therefore root A contains only itself.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/1501"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(1000.0)
+                );
+
+        /*
+         * 1502 now belongs to 1503:
+         *
+         * 3000 + 5000 = 8000
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/1503"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(8000.0)
+                );
+
+        /*
+         * Starting directly from 1502 must use
+         * its replacement amount.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/1502"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(5000.0)
+                );
+    }
+
+    @Test
     void shouldReturnNotFoundWhenTransactionDoesNotExist()
             throws Exception {
 

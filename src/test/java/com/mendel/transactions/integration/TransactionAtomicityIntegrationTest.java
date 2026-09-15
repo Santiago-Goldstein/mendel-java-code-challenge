@@ -32,6 +32,7 @@ class TransactionAtomicityIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+
         jdbcTemplate.update(
                 "DELETE FROM transactions"
         );
@@ -50,9 +51,9 @@ class TransactionAtomicityIntegrationTest {
 
         /*
          * transaction_type is VARCHAR(255).
-         * This deliberately exceeds that database
-         * constraint and forces MySQL to reject
-         * the batch during flush.
+         *
+         * 300 characters deliberately violate
+         * the real MySQL column constraint.
          */
         String invalidType =
                 "x".repeat(300);
@@ -78,12 +79,101 @@ class TransactionAtomicityIntegrationTest {
         );
 
         /*
-         * Even though the first row was valid,
-         * the transaction must have rolled back
-         * the entire batch.
+         * No partial insert.
          */
         assertThat(
                 repository.findAll()
         ).isEmpty();
+    }
+
+    @Test
+    void shouldRollbackReplacementAndNewRowsWhenBatchFails() {
+
+        /*
+         * Existing committed state.
+         */
+        service.saveTransaction(
+                6101L,
+                1000.0,
+                "original",
+                null
+        );
+
+        Transaction replacement =
+                new Transaction(
+                        6101L,
+                        9999.0,
+                        "replacement",
+                        null
+                );
+
+        Transaction validNewTransaction =
+                new Transaction(
+                        6102L,
+                        2000.0,
+                        "new-valid",
+                        null
+                );
+
+        String invalidType =
+                "x".repeat(300);
+
+        Transaction invalid =
+                new Transaction(
+                        6103L,
+                        3000.0,
+                        invalidType,
+                        null
+                );
+
+        assertThatThrownBy(
+                () ->
+                        service.saveTransactions(
+                                List.of(
+                                        replacement,
+                                        validNewTransaction,
+                                        invalid
+                                )
+                        )
+        ).isInstanceOf(
+                DataIntegrityViolationException.class
+        );
+
+        /*
+         * Existing transaction must retain
+         * the ORIGINAL values.
+         */
+        Transaction persisted =
+                repository
+                        .findById(6101L)
+                        .orElseThrow();
+
+        assertThat(
+                persisted.getAmount()
+        ).isEqualTo(1000.0);
+
+        assertThat(
+                persisted.getType()
+        ).isEqualTo("original");
+
+        /*
+         * New rows from the failed batch must
+         * not exist either.
+         */
+        assertThat(
+                repository.findById(6102L)
+        ).isEmpty();
+
+        assertThat(
+                repository.findById(6103L)
+        ).isEmpty();
+
+        /*
+         * Database should still contain exactly
+         * the original committed transaction.
+         */
+        assertThat(
+                repository.findAll()
+        ).hasSize(1);
     }
 }
