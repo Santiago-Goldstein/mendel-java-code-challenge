@@ -29,7 +29,17 @@ public class JpaTransactionRepositoryAdapter
     public void saveAll(
             List<Transaction> transactions
     ) {
-        repository.saveAll(transactions);
+        /*
+         * Flush while the service transaction is still
+         * active so persistence errors are detected
+         * within the use-case boundary.
+         *
+         * A failure still rolls the whole transaction
+         * back.
+         */
+        repository.saveAllAndFlush(
+                transactions
+        );
     }
 
     @Override

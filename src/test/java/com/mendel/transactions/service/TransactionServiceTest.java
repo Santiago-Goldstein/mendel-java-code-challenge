@@ -2,6 +2,7 @@ package com.mendel.transactions.service;
 
 import com.mendel.transactions.domain.Transaction;
 import com.mendel.transactions.exception.TransactionNotFoundException;
+import com.mendel.transactions.lock.TransactionGraphLockManager;
 import com.mendel.transactions.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,21 +13,31 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class TransactionServiceTest {
 
     private TransactionRepository repository;
+    private TransactionGraphLockManager graphLockManager;
     private TransactionService service;
 
     @BeforeEach
     void setUp() {
-
         repository =
                 mock(TransactionRepository.class);
 
+        graphLockManager =
+                mock(TransactionGraphLockManager.class);
+
         service =
-                new TransactionService(repository);
+                new TransactionService(
+                        repository,
+                        graphLockManager
+                );
     }
 
     @Test
@@ -41,6 +52,9 @@ class TransactionServiceTest {
                 "cars",
                 null
         );
+
+        verify(graphLockManager)
+                .acquireWriteLock();
 
         ArgumentCaptor<Transaction> captor =
                 ArgumentCaptor.forClass(
@@ -75,23 +89,22 @@ class TransactionServiceTest {
 
         when(
                 repository.findByType("shopping")
-        )
-                .thenReturn(
-                        List.of(
-                                new Transaction(
-                                        12L,
-                                        5000.0,
-                                        "shopping",
-                                        11L
-                                ),
-                                new Transaction(
-                                        11L,
-                                        10000.0,
-                                        "shopping",
-                                        10L
-                                )
+        ).thenReturn(
+                List.of(
+                        new Transaction(
+                                12L,
+                                5000.0,
+                                "shopping",
+                                11L
+                        ),
+                        new Transaction(
+                                11L,
+                                10000.0,
+                                "shopping",
+                                10L
                         )
-                );
+                )
+        );
 
         List<Long> ids =
                 service.findTransactionIdsByType(
@@ -103,6 +116,11 @@ class TransactionServiceTest {
                         11L,
                         12L
                 );
+
+        verify(
+                graphLockManager,
+                never()
+        ).acquireWriteLock();
     }
 
     @Test
@@ -110,8 +128,7 @@ class TransactionServiceTest {
 
         when(
                 repository.findByType("unknown")
-        )
-                .thenReturn(List.of());
+        ).thenReturn(List.of());
 
         assertThat(
                 service.findTransactionIdsByType(
@@ -147,7 +164,7 @@ class TransactionServiceTest {
                         11L
                 );
 
-        Transaction unrelatedTransaction =
+        Transaction unrelated =
                 new Transaction(
                         20L,
                         3000.0,
@@ -157,7 +174,9 @@ class TransactionServiceTest {
 
         when(repository.findById(10L))
                 .thenReturn(
-                        Optional.of(transaction10)
+                        Optional.of(
+                                transaction10
+                        )
                 );
 
         when(repository.findAll())
@@ -166,15 +185,13 @@ class TransactionServiceTest {
                                 transaction10,
                                 transaction11,
                                 transaction12,
-                                unrelatedTransaction
+                                unrelated
                         )
                 );
 
-        double sum =
-                service.calculateSum(10L);
-
-        assertThat(sum)
-                .isEqualTo(20000.0);
+        assertThat(
+                service.calculateSum(10L)
+        ).isEqualTo(20000.0);
     }
 
     @Test
@@ -206,7 +223,9 @@ class TransactionServiceTest {
 
         when(repository.findById(11L))
                 .thenReturn(
-                        Optional.of(transaction11)
+                        Optional.of(
+                                transaction11
+                        )
                 );
 
         when(repository.findAll())
@@ -218,26 +237,31 @@ class TransactionServiceTest {
                         )
                 );
 
-        double sum =
-                service.calculateSum(11L);
-
-        assertThat(sum)
-                .isEqualTo(15000.0);
+        assertThat(
+                service.calculateSum(11L)
+        ).isEqualTo(15000.0);
     }
 
     @Test
     void shouldThrowExceptionWhenTransactionDoesNotExist() {
 
         when(repository.findById(999L))
-                .thenReturn(Optional.empty());
+                .thenReturn(
+                        Optional.empty()
+                );
 
         assertThatThrownBy(
-                () -> service.calculateSum(999L)
+                () ->
+                        service.calculateSum(
+                                999L
+                        )
         )
                 .isInstanceOf(
                         TransactionNotFoundException.class
                 )
-                .hasMessageContaining("999");
+                .hasMessageContaining(
+                        "999"
+                );
 
         verify(
                 repository,
@@ -249,11 +273,10 @@ class TransactionServiceTest {
     void shouldHandleCyclesWithoutCountingTransactionsTwice() {
 
         /*
-         * Defensive test.
-         *
-         * The write path rejects cycles, but the sum
-         * algorithm still protects itself from corrupted
-         * legacy/external data.
+         * Defensive read-side protection.
+         * Write operations should prevent this state,
+         * but calculateSum remains robust against
+         * corrupted/legacy data.
          */
 
         Transaction transaction10 =
@@ -282,7 +305,9 @@ class TransactionServiceTest {
 
         when(repository.findById(10L))
                 .thenReturn(
-                        Optional.of(transaction10)
+                        Optional.of(
+                                transaction10
+                        )
                 );
 
         when(repository.findAll())
@@ -294,11 +319,9 @@ class TransactionServiceTest {
                         )
                 );
 
-        double sum =
-                service.calculateSum(10L);
-
-        assertThat(sum)
-                .isEqualTo(20000.0);
+        assertThat(
+                service.calculateSum(10L)
+        ).isEqualTo(20000.0);
     }
 
     @Test
@@ -336,6 +359,9 @@ class TransactionServiceTest {
 
         assertThat(saved)
                 .isEqualTo(2);
+
+        verify(graphLockManager)
+                .acquireWriteLock();
 
         verify(repository)
                 .saveAll(transactions);
@@ -382,7 +408,9 @@ class TransactionServiceTest {
                 );
 
         when(repository.findById(10L))
-                .thenReturn(Optional.of(root));
+                .thenReturn(
+                        Optional.of(root)
+                );
 
         when(repository.findAll())
                 .thenReturn(
@@ -394,10 +422,8 @@ class TransactionServiceTest {
                         )
                 );
 
-        double sum =
-                service.calculateSum(10L);
-
-        assertThat(sum)
-                .isEqualTo(10000.0);
+        assertThat(
+                service.calculateSum(10L)
+        ).isEqualTo(10000.0);
     }
 }

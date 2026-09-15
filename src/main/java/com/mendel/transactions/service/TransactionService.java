@@ -3,8 +3,10 @@ package com.mendel.transactions.service;
 import com.mendel.transactions.domain.Transaction;
 import com.mendel.transactions.exception.CyclicTransactionException;
 import com.mendel.transactions.exception.TransactionNotFoundException;
+import com.mendel.transactions.lock.TransactionGraphLockManager;
 import com.mendel.transactions.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -19,19 +21,28 @@ import java.util.Set;
 public class TransactionService {
 
     private final TransactionRepository repository;
+    private final TransactionGraphLockManager graphLockManager;
 
     public TransactionService(
-            TransactionRepository repository
+            TransactionRepository repository,
+            TransactionGraphLockManager graphLockManager
     ) {
         this.repository = repository;
+        this.graphLockManager = graphLockManager;
     }
 
+    @Transactional
     public void saveTransaction(
             long id,
             double amount,
             String type,
             Long parentId
     ) {
+        /*
+         * All graph mutations are serialized through
+         * the same database-backed pessimistic lock.
+         */
+        graphLockManager.acquireWriteLock();
 
         Transaction transaction =
                 new Transaction(
@@ -41,6 +52,10 @@ public class TransactionService {
                         parentId
                 );
 
+        /*
+         * Validation and persistence happen inside
+         * the same database transaction.
+         */
         validateNoCycles(
                 List.of(transaction)
         );
@@ -48,10 +63,10 @@ public class TransactionService {
         repository.save(transaction);
     }
 
+    @Transactional(readOnly = true)
     public List<Long> findTransactionIdsByType(
             String type
     ) {
-
         return repository
                 .findByType(type)
                 .stream()
@@ -60,10 +75,10 @@ public class TransactionService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public double calculateSum(
             long transactionId
     ) {
-
         repository
                 .findById(transactionId)
                 .orElseThrow(
@@ -145,12 +160,23 @@ public class TransactionService {
         return sum;
     }
 
+    @Transactional
     public int saveTransactions(
             List<Transaction> transactions
     ) {
+        graphLockManager.acquireWriteLock();
 
+        /*
+         * The complete batch is validated before
+         * anything is persisted.
+         */
         validateNoCycles(transactions);
 
+        /*
+         * The complete batch participates in this
+         * same transaction. Any persistence failure
+         * rolls the entire operation back.
+         */
         repository.saveAll(transactions);
 
         return transactions.size();
@@ -159,18 +185,20 @@ public class TransactionService {
     private void validateNoCycles(
             List<Transaction> candidateTransactions
     ) {
-
         Map<Long, Long> parentByTransactionId =
                 new HashMap<>();
 
         /*
-         * Start with the currently persisted graph.
+         * Load the currently committed graph.
+         *
+         * Because the global write lock was acquired
+         * first, no other graph mutation can commit
+         * between this validation and our persistence.
          */
         for (
                 Transaction transaction :
                 repository.findAll()
         ) {
-
             parentByTransactionId.put(
                     transaction.getId(),
                     transaction.getParentId()
@@ -178,16 +206,14 @@ public class TransactionService {
         }
 
         /*
-         * Apply the proposed changes in memory.
-         *
-         * Existing IDs are replaced here exactly as they
-         * would be replaced by the PUT operation.
+         * Apply proposed changes in memory first.
+         * Existing transaction IDs are replaced,
+         * preserving PUT semantics.
          */
         for (
                 Transaction transaction :
                 candidateTransactions
         ) {
-
             parentByTransactionId.put(
                     transaction.getId(),
                     transaction.getParentId()
@@ -202,7 +228,6 @@ public class TransactionService {
     private void validateGraphHasNoCycles(
             Map<Long, Long> parentByTransactionId
     ) {
-
         Set<Long> completelyValidated =
                 new HashSet<>();
 
@@ -210,7 +235,6 @@ public class TransactionService {
                 Long startingId :
                 parentByTransactionId.keySet()
         ) {
-
             if (
                     completelyValidated
                             .contains(startingId)
@@ -229,7 +253,6 @@ public class TransactionService {
                             && parentByTransactionId
                             .containsKey(currentId)
             ) {
-
                 if (
                         completelyValidated
                                 .contains(currentId)
@@ -245,8 +268,9 @@ public class TransactionService {
                 }
 
                 currentId =
-                        parentByTransactionId
-                                .get(currentId);
+                        parentByTransactionId.get(
+                                currentId
+                        );
             }
 
             completelyValidated.addAll(
