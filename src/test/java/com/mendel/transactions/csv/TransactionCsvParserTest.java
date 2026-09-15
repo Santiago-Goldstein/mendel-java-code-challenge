@@ -59,13 +59,23 @@ class TransactionCsvParserTest {
 
     @Test
     void shouldRejectCsvWithMissingRequiredHeader() {
-        String csv = """
-                id,amount,type
-                10,5000,cars
-                """;
 
-        assertThatThrownBy(() -> parser.parse(stream(csv)))
-                .isInstanceOf(InvalidCsvException.class);
+        String csv = """
+            id,amount,type
+            10,5000,cars
+            """;
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessage(
+                        "CSV must contain headers: id, amount, type, parent_id"
+                );
     }
 
     @Test
@@ -90,6 +100,131 @@ class TransactionCsvParserTest {
         assertThatThrownBy(() -> parser.parse(stream(csv)))
                 .isInstanceOf(InvalidCsvException.class);
     }
+
+    @Test
+    void shouldRejectNullInput() {
+
+        assertThatThrownBy(
+                () -> parser.parse(null)
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessage(
+                        "CSV input cannot be null"
+                );
+    }
+
+    @Test
+    void shouldRejectCsvWithoutTransactions() {
+
+        String csv = """
+            id,amount,type,parent_id
+            """;
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessage(
+                        "CSV does not contain any transactions"
+                );
+    }
+
+    @Test
+    void shouldRejectMissingRequiredValue() {
+
+        String csv = """
+            id,amount,type,parent_id
+            10,,cars,
+            """;
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessageContaining(
+                        "Missing required value"
+                );
+    }
+
+    @Test
+    void shouldRejectNonFiniteAmount() {
+
+        String csv = """
+            id,amount,type,parent_id
+            10,Infinity,cars,
+            """;
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessageContaining(
+                        "Amount must be a finite number"
+                );
+    }
+
+    @Test
+    void shouldRejectInvalidParentId() {
+
+        String csv = """
+            id,amount,type,parent_id
+            10,5000,cars,invalid-parent
+            """;
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessageContaining(
+                        "Invalid numeric value"
+                );
+    }
+
+    @Test
+    void shouldRejectTypeLongerThanDatabaseLimit() {
+
+        String longType =
+                "x".repeat(
+                        Transaction.MAX_TYPE_LENGTH + 1
+                );
+
+        String csv = """
+            id,amount,type,parent_id
+            10,5000,%s,
+            """.formatted(longType);
+
+        assertThatThrownBy(
+                () -> parser.parse(
+                        stream(csv)
+                )
+        )
+                .isInstanceOf(
+                        InvalidCsvException.class
+                )
+                .hasMessageContaining(
+                        "Type must be at most 255 characters"
+                );
+    }
+
+
 
     private ByteArrayInputStream stream(String value) {
         return new ByteArrayInputStream(

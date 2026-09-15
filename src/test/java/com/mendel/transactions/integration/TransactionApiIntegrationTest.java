@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import com.mendel.transactions.domain.Transaction;
 
 import java.nio.charset.StandardCharsets;
 
@@ -464,6 +465,97 @@ class TransactionApiIntegrationTest {
     }
 
     @Test
+    void shouldReturnBadRequestWhenTypeExceedsDatabaseLimit()
+            throws Exception {
+
+        String type =
+                "x".repeat(
+                        Transaction.MAX_TYPE_LENGTH + 1
+                );
+
+        String requestBody = """
+            {
+                "amount": 5000,
+                "type": "%s"
+            }
+            """.formatted(type);
+
+        mockMvc.perform(
+                        put("/transactions/1602")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(requestBody)
+                )
+                .andExpect(
+                        status().isBadRequest()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "type must be at most 255 characters"
+                                )
+                );
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenCsvTypeExceedsDatabaseLimit()
+            throws Exception {
+
+        String longType =
+                "x".repeat(
+                        Transaction.MAX_TYPE_LENGTH + 1
+                );
+
+        String csv = """
+            id,amount,type,parent_id
+            1701,5000,%s,
+            """.formatted(longType);
+
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file",
+                        "invalid-type.csv",
+                        "text/csv",
+                        csv.getBytes(
+                                StandardCharsets.UTF_8
+                        )
+                );
+
+        mockMvc.perform(
+                        multipart(
+                                "/transactions/import"
+                        )
+                                .file(file)
+                )
+                .andExpect(
+                        status().isBadRequest()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "Type must be at most 255 characters at CSV record 1"
+                                )
+                );
+    }
+
+    @Test
     void shouldReturnBadRequestWhenAmountIsMissing()
             throws Exception {
 
@@ -489,6 +581,134 @@ class TransactionApiIntegrationTest {
                         jsonPath("$.message")
                                 .value(
                                         "amount is required"
+                                )
+                );
+    }
+
+
+    @Test
+    void shouldReturnEmptyListWhenTypeDoesNotExist()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/non-existent-type"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        content()
+                                .contentTypeCompatibleWith(
+                                        MediaType.APPLICATION_JSON
+                                )
+                )
+                .andExpect(
+                        jsonPath("$")
+                                .isArray()
+                )
+                .andExpect(
+                        jsonPath("$")
+                                .isEmpty()
+                );
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenMultipleFieldsAreInvalid()
+            throws Exception {
+
+        mockMvc.perform(
+                        put("/transactions/1601")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "type": "   "
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isBadRequest()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "amount is required; type is required"
+                                )
+                );
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenTransactionIdHasInvalidType()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/not-a-number"
+                        )
+                )
+                .andExpect(
+                        status().isBadRequest()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "Invalid value for 'transactionId'"
+                                )
+                );
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenCsvFileIsEmpty()
+            throws Exception {
+
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file",
+                        "empty.csv",
+                        "text/csv",
+                        new byte[0]
+                );
+
+        mockMvc.perform(
+                        multipart(
+                                "/transactions/import"
+                        )
+                                .file(file)
+                )
+                .andExpect(
+                        status().isBadRequest()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "CSV file cannot be empty"
                                 )
                 );
     }

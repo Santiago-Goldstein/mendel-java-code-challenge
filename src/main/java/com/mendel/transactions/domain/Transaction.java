@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 @Table(name = "transactions")
 public class Transaction {
 
+    public static final int MAX_TYPE_LENGTH = 255;
+
     @Id
     private long id;
 
@@ -19,7 +21,8 @@ public class Transaction {
 
     @Column(
             name = "transaction_type",
-            nullable = false
+            nullable = false,
+            length = MAX_TYPE_LENGTH
     )
     private String type;
 

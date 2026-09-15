@@ -20,22 +20,32 @@ import java.util.Set;
 @Component
 public class TransactionCsvParser {
 
-    private static final Set<String> REQUIRED_HEADERS =
-            Set.of("id", "amount", "type", "parent_id");
+    private static final List<String> REQUIRED_HEADERS =
+            List.of(
+                    "id",
+                    "amount",
+                    "type",
+                    "parent_id"
+            );
 
-    public List<Transaction> parse(InputStream inputStream) {
+    public List<Transaction> parse(
+            InputStream inputStream
+    ) {
 
         if (inputStream == null) {
-            throw new InvalidCsvException("CSV input cannot be null");
+            throw new InvalidCsvException(
+                    "CSV input cannot be null"
+            );
         }
 
-        CSVFormat format = CSVFormat.DEFAULT
-                .builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .setTrim(true)
-                .setIgnoreEmptyLines(true)
-                .get();
+        CSVFormat format =
+                CSVFormat.DEFAULT
+                        .builder()
+                        .setHeader()
+                        .setSkipHeaderRecord(true)
+                        .setTrim(true)
+                        .setIgnoreEmptyLines(true)
+                        .get();
 
         try (
                 Reader reader =
@@ -45,7 +55,10 @@ public class TransactionCsvParser {
                         );
 
                 CSVParser parser =
-                        CSVParser.parse(reader, format)
+                        CSVParser.parse(
+                                reader,
+                                format
+                        )
         ) {
 
             validateHeaders(parser);
@@ -57,31 +70,45 @@ public class TransactionCsvParser {
                     new HashSet<>();
 
             for (CSVRecord record : parser) {
+
                 Transaction transaction =
                         parseRecord(record);
 
-                if (!ids.add(transaction.getId())) {
+                if (!ids.add(
+                        transaction.getId()
+                )) {
+
                     throw new InvalidCsvException(
                             "Duplicate transaction id in CSV: "
                                     + transaction.getId()
                     );
                 }
 
-                transactions.add(transaction);
+                transactions.add(
+                        transaction
+                );
             }
 
             if (transactions.isEmpty()) {
+
                 throw new InvalidCsvException(
                         "CSV does not contain any transactions"
                 );
             }
 
-            return List.copyOf(transactions);
+            return List.copyOf(
+                    transactions
+            );
 
         } catch (InvalidCsvException exception) {
+
             throw exception;
 
-        } catch (IOException | IllegalArgumentException exception) {
+        } catch (
+                IOException
+                | IllegalArgumentException exception
+        ) {
+
             throw new InvalidCsvException(
                     "Invalid CSV file",
                     exception
@@ -89,20 +116,32 @@ public class TransactionCsvParser {
         }
     }
 
-    private void validateHeaders(CSVParser parser) {
+    private void validateHeaders(
+            CSVParser parser
+    ) {
 
         Set<String> headers =
-                parser.getHeaderMap().keySet();
+                parser
+                        .getHeaderMap()
+                        .keySet();
 
-        if (!headers.containsAll(REQUIRED_HEADERS)) {
+        if (!headers.containsAll(
+                REQUIRED_HEADERS
+        )) {
+
             throw new InvalidCsvException(
                     "CSV must contain headers: "
-                            + String.join(", ", REQUIRED_HEADERS)
+                            + String.join(
+                            ", ",
+                            REQUIRED_HEADERS
+                    )
             );
         }
     }
 
-    private Transaction parseRecord(CSVRecord record) {
+    private Transaction parseRecord(
+            CSVRecord record
+    ) {
 
         String idValue =
                 record.get("id");
@@ -121,8 +160,22 @@ public class TransactionCsvParser {
                         || amountValue.isBlank()
                         || type.isBlank()
         ) {
+
             throw new InvalidCsvException(
                     "Missing required value at CSV record "
+                            + record.getRecordNumber()
+            );
+        }
+
+        if (
+                type.length()
+                        > Transaction.MAX_TYPE_LENGTH
+        ) {
+
+            throw new InvalidCsvException(
+                    "Type must be at most "
+                            + Transaction.MAX_TYPE_LENGTH
+                            + " characters at CSV record "
                             + record.getRecordNumber()
             );
         }
@@ -130,12 +183,17 @@ public class TransactionCsvParser {
         try {
 
             long id =
-                    Long.parseLong(idValue);
+                    Long.parseLong(
+                            idValue
+                    );
 
             double amount =
-                    Double.parseDouble(amountValue);
+                    Double.parseDouble(
+                            amountValue
+                    );
 
             if (!Double.isFinite(amount)) {
+
                 throw new InvalidCsvException(
                         "Amount must be a finite number at CSV record "
                                 + record.getRecordNumber()
@@ -145,7 +203,9 @@ public class TransactionCsvParser {
             Long parentId =
                     parentIdValue.isBlank()
                             ? null
-                            : Long.parseLong(parentIdValue);
+                            : Long.parseLong(
+                            parentIdValue
+                    );
 
             return new Transaction(
                     id,
@@ -154,7 +214,9 @@ public class TransactionCsvParser {
                     parentId
             );
 
-        } catch (NumberFormatException exception) {
+        } catch (
+                NumberFormatException exception
+        ) {
 
             throw new InvalidCsvException(
                     "Invalid numeric value at CSV record "

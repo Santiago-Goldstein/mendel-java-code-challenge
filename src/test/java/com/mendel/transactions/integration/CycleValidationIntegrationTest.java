@@ -140,6 +140,132 @@ class CycleValidationIntegrationTest {
     }
 
     @Test
+    void shouldRejectCsvReplacementThatCreatesCycleAndPreservePreviousState()
+            throws Exception {
+
+        /*
+         * Existing valid graph:
+         *
+         * 2301
+         *   |
+         * 2302
+         */
+
+        mockMvc.perform(
+                        put("/transactions/2301")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 1000,
+                                        "type": "original-root"
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                );
+
+        mockMvc.perform(
+                        put("/transactions/2302")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content("""
+                                    {
+                                        "amount": 2000,
+                                        "type": "original-child",
+                                        "parent_id": 2301
+                                    }
+                                    """)
+                )
+                .andExpect(
+                        status().isOk()
+                );
+
+        /*
+         * Replacing 2301 with parent 2302 would create:
+         *
+         * 2301 → 2302 → 2301
+         */
+        String csv = """
+            id,amount,type,parent_id
+            2301,9000,cycle-replacement,2302
+            """;
+
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file",
+                        "cycle-replacement.csv",
+                        "text/csv",
+                        csv.getBytes(
+                                StandardCharsets.UTF_8
+                        )
+                );
+
+        mockMvc.perform(
+                        multipart(
+                                "/transactions/import"
+                        )
+                                .file(file)
+                )
+                .andExpect(
+                        status().isConflict()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(409)
+                );
+
+        /*
+         * Previous graph must still be intact.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/sum/2301"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.sum")
+                                .value(3000.0)
+                );
+
+        /*
+         * Rejected replacement must not have
+         * changed the type either.
+         */
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/cycle-replacement"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$")
+                                .isEmpty()
+                );
+
+        mockMvc.perform(
+                        get(
+                                "/transactions/types/original-root"
+                        )
+                )
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$[0]")
+                                .value(2301)
+                );
+    }
+
+    @Test
     void shouldRejectCyclicCsvWithoutImportingAnyTransaction()
             throws Exception {
 
